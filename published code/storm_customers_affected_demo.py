@@ -168,7 +168,7 @@ def plot_storm(county_frame: pd.DataFrame, *, storm_id: str, storm_name: str, ou
     outage_values = outage_values[np.isfinite(outage_values) & (outage_values > 0.0)]
     outage_norm = PowerNorm(gamma=0.35, vmin=0.0, vmax=max(float(outage_values.max()) if outage_values.size else 1.0, 1.0))
     (fig, axes) = plt.subplots(1, 3, figsize=(18.0, 6.8), dpi=260)
-    panels = (('actual_peak_customers_affected', affected_norm, 'magma', f"Actual customers affected | total={float(target_only['actual_peak_customers_affected'].sum()):,.0f}"), ('pred_peak_customers_affected', affected_norm, 'magma', f"Predicted customers affected | total={float(target_only['pred_peak_customers_affected'].sum()):,.0f}"), ('pred_county_outages', outage_norm, 'viridis', f"Predicted outages | total={float(target_only['pred_county_outages'].sum()):,.0f}"))
+    panels = (('actual_peak_customers_affected', affected_norm, 'magma', f"Actual customers affected | {float(target_only['actual_peak_customers_affected'].sum()):,.0f}"), ('pred_peak_customers_affected', affected_norm, 'magma', f"Predicted customers affected | {float(target_only['pred_peak_customers_affected'].sum()):,.0f}"), ('pred_county_outages', outage_norm, 'viridis', f"Predicted outages | {float(target_only['pred_county_outages'].sum()):,.0f}"))
     for (ax, (column, norm, cmap, title)) in zip(axes, panels):
         merged.plot(ax=ax, color='#f5f5f5', edgecolor='#d4d4d8', linewidth=0.2)
         target_only.plot(ax=ax, column=column, cmap=cmap, edgecolor='#52525b', linewidth=0.2, norm=norm)
@@ -187,8 +187,7 @@ def plot_storm(county_frame: pd.DataFrame, *, storm_id: str, storm_name: str, ou
     fig.colorbar(affected_bar, ax=axes[:2], orientation='vertical', shrink=0.68, pad=0.015, fraction=0.04).set_label('Customers affected')
     fig.colorbar(outage_bar, ax=[axes[2]], orientation='vertical', shrink=0.68, pad=0.015, fraction=0.06).set_label('Predicted outages')
     fig.suptitle(f'{storm_name} ({storm_id}) county impacts', fontsize=18, y=0.985)
-    fig.text(0.5, 0.945, f'evaluation counties={target_only.shape[0]:,} | static + weather driven inference', ha='center', va='top', fontsize=10)
-    fig.subplots_adjust(left=0.02, right=0.94, bottom=0.03, top=0.89, wspace=0.03)
+    fig.subplots_adjust(left=0.02, right=0.94, bottom=0.03, top=0.92, wspace=0.03)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, bbox_inches='tight')
     plt.close(fig)
