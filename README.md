@@ -7,7 +7,7 @@
 
 ## Conda dependencies
 - Python 3.11, NumPy, pandas, GeoPandas, Matplotlib, PyArrow, and MLX 0.32.
-- MLX is installed from Conda Forge and supports Apple-silicon macOS and CPU execution on Linux. See the [MLX install guide](https://ml-explore.github.io/mlx/build/html/install.html) for Linux installation details.
+- MLX is installed from Conda Forge and supports Apple-silicon and CPU execution on Linux. See the [MLX install guide](https://ml-explore.github.io/mlx/build/html/install.html) for Linux installation details.
 
 ## Run Demo
 1. Create the conda environment: `conda env create -f 'published code/environment.yml'`
@@ -17,9 +17,9 @@
 5. Outputs available in `published code/output/`
 
 ## Demo Data Requirements
-- Download `large_data_for_demo` from Google Drive and place it directly inside `published code/`.
+- Download `large_data_for_demo` from [Google Drive *here*](https://drive.google.com/drive/folders/1moK39nab_J4nKiLsOOubrguQkS9qAvvN?usp=share_link) and place it directly inside `published code/`.
 - The bundle contains processed `weather_data`, `eaglei_targets`, `storm_tracks`, and `county_polygons`.
 - Custom locations may be supplied with `--weather-data`, `--eaglei-dir`, `--storm-tracks`, `--county-file`, and `--static-data`.
 
-## Original Datasets
+## Original Dataset Sources
 ![Table 1. Original datasets](images/Table%201.png)
