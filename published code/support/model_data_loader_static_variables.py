@@ -3,8 +3,7 @@ from dataclasses import dataclass
 from pathlib import Path
 import numpy as np
 import pandas as pd
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_STATIC_PATH = PROJECT_ROOT / 'data_cache' / 'aggregated_static_variables.feather'
+DEFAULT_STATIC_PATH = Path(__file__).resolve().parents[1] / 'data' / 'static_variables.feather'
 
 def _build_end_idx(sorted_group_ids: np.ndarray) -> np.ndarray:
     if sorted_group_ids.size == 0:
@@ -30,9 +29,12 @@ class StaticVariablesData:
     tree_canopy_cover_2023: np.ndarray
     tree_height_mean: np.ndarray
     elevation: np.ndarray
+    region_new_england: np.ndarray
+    region_gulf: np.ndarray
+    region_eastern_coast: np.ndarray
 
 def load_static_variables(static_path: Path | str=DEFAULT_STATIC_PATH) -> StaticVariablesData:
-    columns = ['index', 'FULL_COUNTY_FIPS', 'county_map', 'tract_map', 'Total Population Scaled', 'TOTAL NUMBER OF HOUSEHOLDS Scaled', 'length_of_roads_2024', 'svi_overall', 'svi_socioeconomic_status', 'svi_household_characteristics', 'svi_racial_and_ethnic_minority', 'svi_housing_type_and_transportation', 'ALAND', 'tree_canopy_cover_2023', 'tree_height_mean', 'elevation']
+    columns = ['index', 'FULL_COUNTY_FIPS', 'county_map', 'tract_map', 'Total Population Scaled', 'TOTAL NUMBER OF HOUSEHOLDS Scaled', 'length_of_roads_2024', 'svi_overall', 'svi_socioeconomic_status', 'svi_household_characteristics', 'svi_racial_and_ethnic_minority', 'svi_housing_type_and_transportation', 'ALAND', 'tree_canopy_cover_2023', 'tree_height_mean', 'elevation', 'region_new_england', 'region_gulf', 'region_eastern_coast']
     df = pd.read_feather(static_path, columns=columns)
     county_map = np.asarray(df['county_map'].fillna(-1).to_numpy(), dtype=np.int64)
     tract_map = np.asarray(df['tract_map'].fillna(-1).to_numpy(), dtype=np.int64)
@@ -48,4 +50,4 @@ def load_static_variables(static_path: Path | str=DEFAULT_STATIC_PATH) -> Static
         values = pd.to_numeric(df[column], errors='coerce').fillna(fill_value).to_numpy(dtype=np.float32, copy=False)
         return values[fused_perm].astype(np.float32, copy=False)
     county_fips_fused = df['FULL_COUNTY_FIPS'].astype(str).str.zfill(5).to_numpy()[fused_perm]
-    return StaticVariablesData(h3_index=df['index'].to_numpy()[fused_perm], county_fips=county_fips_fused[county_start_idx], county_tract_fused_tract_end_idx=tract_end_idx, county_tract_fused_county_end_idx=county_end_idx, total_population=take('Total Population Scaled'), total_households=take('TOTAL NUMBER OF HOUSEHOLDS Scaled'), length_of_roads_2024=take('length_of_roads_2024'), svi_overall=take('svi_overall', fill_value=np.nan), svi_socioeconomic_status=take('svi_socioeconomic_status', fill_value=np.nan), svi_household_characteristics=take('svi_household_characteristics', fill_value=np.nan), svi_racial_and_ethnic_minority=take('svi_racial_and_ethnic_minority', fill_value=np.nan), svi_housing_type_and_transportation=take('svi_housing_type_and_transportation', fill_value=np.nan), tract_area=take('ALAND'), tree_canopy_cover_2023=take('tree_canopy_cover_2023'), tree_height_mean=take('tree_height_mean'), elevation=take('elevation'))
+    return StaticVariablesData(h3_index=df['index'].to_numpy()[fused_perm], county_fips=county_fips_fused[county_start_idx], county_tract_fused_tract_end_idx=tract_end_idx, county_tract_fused_county_end_idx=county_end_idx, total_population=take('Total Population Scaled'), total_households=take('TOTAL NUMBER OF HOUSEHOLDS Scaled'), length_of_roads_2024=take('length_of_roads_2024'), svi_overall=take('svi_overall', fill_value=np.nan), svi_socioeconomic_status=take('svi_socioeconomic_status', fill_value=np.nan), svi_household_characteristics=take('svi_household_characteristics', fill_value=np.nan), svi_racial_and_ethnic_minority=take('svi_racial_and_ethnic_minority', fill_value=np.nan), svi_housing_type_and_transportation=take('svi_housing_type_and_transportation', fill_value=np.nan), tract_area=take('ALAND'), tree_canopy_cover_2023=take('tree_canopy_cover_2023'), tree_height_mean=take('tree_height_mean'), elevation=take('elevation'), region_new_england=take('region_new_england'), region_gulf=take('region_gulf'), region_eastern_coast=take('region_eastern_coast'))

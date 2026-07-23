@@ -17,13 +17,13 @@ if str(SUPPORT_DIR) not in sys.path:
     sys.path.insert(0, str(SUPPORT_DIR))
 if str(REPO_ROOT) not in sys.path:
     sys.path.append(str(REPO_ROOT))
-from christines_data import load_counties
+from christines_data import COUNTY_SHP, load_counties
 from customers_affected_support import PROCESSED_EAGLEI_DIR, load_peak_targets
-from model_data_loader_static_variables import load_static_variables
-from model_data_loader_temporal_variables import DEFAULT_STORMS_PATH, aggregate_storm_batch, build_reorder_idx, build_temporal_loader, load_temporal_cell_order
+from model_data_loader_static_variables import DEFAULT_STATIC_PATH, load_static_variables
+from model_data_loader_temporal_variables import DEFAULT_STORMS_PATH, DEFAULT_WEATHER_DB, aggregate_storm_batch, build_reorder_idx, build_temporal_loader, load_temporal_cell_order
 from submodels_line_length import HierarchicalRoadModel, build_features as build_line_length_features
 from submodels_customers_served import CustomersServedLinear, build_feature_matrix as build_customers_served_feature_matrix, segment_sum_np
-from submodels_outage_model import JointOutageModel, PercentUndergroundLinear, StructuralOutageModel, VULNERABILITY_FEATURE_NAMES, as_numpy, build_outage_terrain_features, load_region_fixed_effects, weighted_segment_mean_matrix_np
+from submodels_outage_model import JointOutageModel, PercentUndergroundLinear, StructuralOutageModel, VULNERABILITY_FEATURE_NAMES, as_numpy, build_outage_terrain_features, weighted_segment_mean_matrix_np
 from submodels_percent_underground import build_feature_matrix as build_static_feature_matrix
 SCRIPT_DIR = Path(__file__).resolve().parent
 CHECKPOINT_DIR = SCRIPT_DIR / 'checkpoints'
@@ -43,6 +43,11 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description='Run live outage and customers-affected inference for a storm using repo static data and weather data.')
     parser.add_argument('--storm-id', default=DEFAULT_STORM_ID)
     parser.add_argument('--output', type=Path, default=None)
+    parser.add_argument('--eaglei-dir', type=Path, default=PROCESSED_EAGLEI_DIR)
+    parser.add_argument('--static-data', '--tract-data', dest='static_data', type=Path, default=DEFAULT_STATIC_PATH)
+    parser.add_argument('--storm-tracks', type=Path, default=DEFAULT_STORMS_PATH)
+    parser.add_argument('--weather-data', type=Path, default=DEFAULT_WEATHER_DB)
+    parser.add_argument('--county-file', type=Path, default=COUNTY_SHP)
     return parser.parse_args()
 
 def load_models(served_feature_count: int, rate_feature_count: int) -> tuple[CustomersServedLinear, JointOutageModel]:
@@ -71,12 +76,12 @@ def load_packaged_percent_underground(static_feature_matrix: np.ndarray) -> np.n
     mx.eval(pred, model.state)
     return np.clip(as_numpy(pred, dtype=np.float32), 0.0, 1.0).astype(np.float32, copy=False)
 
-def load_storm_context(storm_id: str) -> dict[str, object]:
-    static_data = load_static_variables()
+def load_storm_context(storm_id: str, *, static_path: Path, weather_data: Path, storm_tracks: Path, eaglei_dir: Path) -> dict[str, object]:
+    static_data = load_static_variables(static_path)
     static_features = np.asarray(build_static_feature_matrix(static_data), dtype=np.float32)
     vulnerability = static_features[:, :len(VULNERABILITY_FEATURE_NAMES)].astype(np.float32, copy=False)
     terrain = build_outage_terrain_features(static_data)
-    region = load_region_fixed_effects(static_data.h3_index)
+    region = np.column_stack([static_data.region_new_england, static_data.region_gulf, static_data.region_eastern_coast]).astype(np.float32, copy=False)
     line_length = load_packaged_line_length(static_data)
     percent_underground = load_packaged_percent_underground(static_features)
     tract_end_idx = np.asarray(static_data.county_tract_fused_tract_end_idx, dtype=np.int32)
@@ -84,8 +89,8 @@ def load_storm_context(storm_id: str) -> dict[str, object]:
     county_sizes = np.diff(np.concatenate([np.array([0], dtype=np.int32), county_end_idx])).astype(np.int32, copy=False)
     tract_features = weighted_segment_mean_matrix_np(static_features, np.clip(line_length, 1e-06, None).astype(np.float32, copy=False), tract_end_idx)
     served_features = build_customers_served_feature_matrix(static_data).astype(np.float32, copy=False)
-    cell_order = load_temporal_cell_order()
-    loader = build_temporal_loader(cell_order=cell_order, storm_name=None, output_dtype=mx.float32)
+    cell_order = load_temporal_cell_order(weather_data)
+    loader = build_temporal_loader(cell_order=cell_order, storm_name=None, storms_path=storm_tracks, weather_db_directory=weather_data, output_dtype=mx.float32)
     reorder_idx = build_reorder_idx(static_data.h3_index, cell_order.h3_index)
     storm_meta = next((storm for storm in loader.storms if storm.storm_id == storm_id), None)
     if storm_meta is None:
@@ -99,7 +104,7 @@ def load_storm_context(storm_id: str) -> dict[str, object]:
     observed_county_ids = np.unique(county_ids).astype(np.int32, copy=False)
     county_fips_full = pd.Series(np.asarray(static_data.county_fips, dtype=object)).astype(str).str.zfill(5).to_numpy()
     county_order = county_fips_full[observed_county_ids]
-    (actual_peak, target_mask_raw) = load_peak_targets(county_order, (storm_id,), PROCESSED_EAGLEI_DIR, 'peak_customers_affected')
+    (actual_peak, target_mask_raw) = load_peak_targets(county_order, (storm_id,), eaglei_dir, 'peak_customers_affected')
     return {'storm_id': storm_id, 'storm_name': str(storm_meta.storm_name), 'served_features': served_features, 'county_end_idx': county_end_idx, 'line_length_cell': line_length[valid_positions].astype(np.float32, copy=False), 'percent_underground_cell': percent_underground[valid_positions].astype(np.float32, copy=False), 'svi_cell': np.asarray(static_data.svi_overall, dtype=np.float32)[valid_positions].astype(np.float32, copy=False), 'vulnerability_cell': vulnerability[valid_positions].astype(np.float32, copy=False), 'terrain_cell': terrain[valid_positions].astype(np.float32, copy=False), 'region_cell': region[valid_positions].astype(np.float32, copy=False), 'weather_cell': agg.weather[valid_positions].astype(np.float32, copy=False), 'tract_features_cell': tract_features[tract_ids].astype(np.float32, copy=False), 'county_ids_full': county_ids, 'observed_county_ids': observed_county_ids, 'county_order': county_order, 'county_complete': county_complete_full[observed_county_ids].astype(bool, copy=False), 'actual_peak': actual_peak.astype(np.float32, copy=False), 'target_mask_raw': target_mask_raw.astype(bool, copy=False)}
 
 def build_county_frame(context: dict[str, object], served_model: CustomersServedLinear, joint_model: JointOutageModel) -> pd.DataFrame:
@@ -144,8 +149,8 @@ def default_output_path(storm_name: str, storm_id: str) -> Path:
     slug = ''.join((ch.lower() if ch.isalnum() else '_' for ch in storm_name)).strip('_') or storm_id.lower()
     return SCRIPT_DIR / 'output' / f'{slug}_{storm_id}_customers_affected_actual_predicted_and_outages.png'
 
-def plot_storm(county_frame: pd.DataFrame, *, storm_id: str, storm_name: str, output_path: Path) -> dict[str, object]:
-    counties = load_counties().copy()
+def plot_storm(county_frame: pd.DataFrame, *, storm_id: str, storm_name: str, output_path: Path, county_file: Path, storm_tracks: Path) -> dict[str, object]:
+    counties = load_counties(county_file).copy()
     counties['GEOID'] = counties['GEOID'].astype(str).str.zfill(5)
     counties = counties[counties['GEOID'].isin(set(county_frame['county_fips'].astype(str)))].copy()
     if counties.crs is None:
@@ -155,7 +160,7 @@ def plot_storm(county_frame: pd.DataFrame, *, storm_id: str, storm_name: str, ou
     target_only = merged[merged['peak_target_mask']].copy()
     if target_only.empty:
         raise ValueError('No evaluation counties remain after masking.')
-    track = gpd.read_feather(DEFAULT_STORMS_PATH)
+    track = gpd.read_feather(storm_tracks)
     track = track[track['SID'].astype(str) == storm_id].copy()
     track_geom = track.geometry.iloc[0] if not track.empty else None
     (minx, miny, maxx, maxy) = target_only.total_bounds
@@ -168,7 +173,11 @@ def plot_storm(county_frame: pd.DataFrame, *, storm_id: str, storm_name: str, ou
     outage_values = outage_values[np.isfinite(outage_values) & (outage_values > 0.0)]
     outage_norm = PowerNorm(gamma=0.35, vmin=0.0, vmax=max(float(outage_values.max()) if outage_values.size else 1.0, 1.0))
     (fig, axes) = plt.subplots(1, 3, figsize=(18.0, 6.8), dpi=260)
-    panels = (('actual_peak_customers_affected', affected_norm, 'magma', f"Actual customers affected | {float(target_only['actual_peak_customers_affected'].sum()):,.0f}"), ('pred_peak_customers_affected', affected_norm, 'magma', f"Predicted customers affected | {float(target_only['pred_peak_customers_affected'].sum()):,.0f}"), ('pred_county_outages', outage_norm, 'viridis', f"Predicted outages | {float(target_only['pred_county_outages'].sum()):,.0f}"))
+    panels = (
+        ('actual_peak_customers_affected', affected_norm, 'magma', 'Actual customers affected'),
+        ('pred_peak_customers_affected', affected_norm, 'magma', 'Predicted customers affected'),
+        ('pred_county_outages', outage_norm, 'viridis', 'Predicted outages'),
+    )
     for (ax, (column, norm, cmap, title)) in zip(axes, panels):
         merged.plot(ax=ax, color='#f5f5f5', edgecolor='#d4d4d8', linewidth=0.2)
         target_only.plot(ax=ax, column=column, cmap=cmap, edgecolor='#52525b', linewidth=0.2, norm=norm)
@@ -195,10 +204,10 @@ def plot_storm(county_frame: pd.DataFrame, *, storm_id: str, storm_name: str, ou
 
 def main() -> None:
     args = parse_args()
-    context = load_storm_context(args.storm_id)
+    context = load_storm_context(args.storm_id, static_path=args.static_data, weather_data=args.weather_data, storm_tracks=args.storm_tracks, eaglei_dir=args.eaglei_dir)
     (served_model, joint_model) = load_models(served_feature_count=int(np.asarray(context['served_features']).shape[1]), rate_feature_count=int(np.asarray(context['tract_features_cell']).shape[1]))
     output_path = args.output if args.output is not None else default_output_path(str(context['storm_name']), str(context['storm_id']))
-    summary = plot_storm(build_county_frame(context, served_model, joint_model), storm_id=str(context['storm_id']), storm_name=str(context['storm_name']), output_path=output_path)
+    summary = plot_storm(build_county_frame(context, served_model, joint_model), storm_id=str(context['storm_id']), storm_name=str(context['storm_name']), output_path=output_path, county_file=args.county_file, storm_tracks=args.storm_tracks)
     summary['raw_target_count'] = int(np.sum(np.asarray(context['target_mask_raw'], dtype=bool)))
     summary['raw_target_actual_peak_total'] = float(np.sum(np.clip(np.asarray(context['actual_peak'], dtype=np.float64)[np.asarray(context['target_mask_raw'], dtype=bool)], 0.0, None)))
     print(json.dumps(summary, indent=2))

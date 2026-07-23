@@ -6,9 +6,9 @@ from typing import Optional, Sequence
 import mlx.core as mx
 import numpy as np
 import pandas as pd
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_STORMS_PATH = PROJECT_ROOT / 'data_cache' / 'relevant_storm_tracks.feather'
-DEFAULT_WEATHER_DB = Path('/Users/aaronspaulding/data/weather_db_hurricane_regions')
+DEMO_DATA_DIR = Path(__file__).resolve().parents[1] / 'large_data_for_demo'
+DEFAULT_STORMS_PATH = DEMO_DATA_DIR / 'storm_tracks' / 'relevant_storm_tracks.feather'
+DEFAULT_WEATHER_DB = DEMO_DATA_DIR / 'weather_data'
 
 @dataclass(frozen=True)
 class TemporalCellOrder:
@@ -55,17 +55,24 @@ def _storm_hours(start: pd.Timestamp, end: pd.Timestamp) -> pd.DatetimeIndex:
 def _file_stem(dt: pd.Timestamp) -> str:
     return dt.strftime('%Y_%m_%dT%H_%M_%S')
 
-def _load_hour_arrays(paths: tuple[str, str, str, str]) -> tuple[mx.array, mx.array, mx.array, mx.array]:
+def _load_hour_arrays(paths: tuple[str, str, str, str]) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     (gust_path, precip_path, outage_path, mask_path) = paths
-    return (mx.load(gust_path), mx.load(precip_path), mx.load(outage_path), mx.load(mask_path))
+    return (np.load(gust_path, allow_pickle=False), np.load(precip_path, allow_pickle=False), np.load(outage_path, allow_pickle=False), np.load(mask_path, allow_pickle=False))
 
 def _as_numpy(x, dtype=None) -> np.ndarray:
     arr = np.array(x, copy=False)
     return arr.astype(dtype, copy=False) if dtype is not None else arr
 
 def build_reorder_idx(static_h3_index: np.ndarray, temporal_h3_index: np.ndarray) -> np.ndarray:
-    temporal_lookup = {str(idx): i for (i, idx) in enumerate(temporal_h3_index)}
-    reorder_idx = np.array([temporal_lookup.get(str(idx), -1) for idx in np.asarray(static_h3_index)], dtype=np.int32)
+    def normalize(values: np.ndarray) -> np.ndarray:
+        values = np.asarray(values)
+        if np.issubdtype(values.dtype, np.integer):
+            return values.astype(np.uint64, copy=False)
+        return np.fromiter((int(str(value), 16) for value in values), dtype=np.uint64, count=values.size)
+    static_ids = normalize(static_h3_index)
+    temporal_ids = normalize(temporal_h3_index)
+    temporal_lookup = {int(idx): i for (i, idx) in enumerate(temporal_ids)}
+    reorder_idx = np.array([temporal_lookup.get(int(idx), -1) for idx in static_ids], dtype=np.int32)
     missing = int(np.sum(reorder_idx < 0))
     if missing:
         raise ValueError(f'Missing {missing} static cells in temporal order mapping.')
@@ -112,10 +119,10 @@ class TemporalStormLoader:
         workers = len(paths) if self.max_workers is None else max(1, int(self.max_workers))
         with ThreadPoolExecutor(max_workers=workers) as pool:
             loaded = list(pool.map(_load_hour_arrays, paths))
-        gust = mx.stack([row[0] for row in loaded], axis=1)
-        precip = mx.stack([row[1] for row in loaded], axis=1)
-        outage = mx.stack([row[2] for row in loaded], axis=1)
-        mask = mx.stack([row[3] for row in loaded], axis=1)
+        gust = mx.stack([mx.array(row[0]) for row in loaded], axis=1)
+        precip = mx.stack([mx.array(row[1]) for row in loaded], axis=1)
+        outage = mx.stack([mx.array(row[2]) for row in loaded], axis=1)
+        mask = mx.stack([mx.array(row[3]) for row in loaded], axis=1)
         if self.output_dtype is not None:
             gust = gust.astype(self.output_dtype)
             precip = precip.astype(self.output_dtype)

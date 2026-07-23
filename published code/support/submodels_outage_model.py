@@ -1,11 +1,7 @@
 from __future__ import annotations
-from pathlib import Path
 import mlx.core as mx
 import mlx.nn as nn
 import numpy as np
-import pandas as pd
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-REGION_FEATURES_PATH = PROJECT_ROOT / 'data_cache' / 'static_region_features.feather'
 VULNERABILITY_FEATURE_NAMES = ('roads_log', 'population_log', 'households_log', 'tract_area_log', 'svi_overall_logit', 'svi_socioeconomic_status_logit', 'svi_household_characteristics_logit', 'svi_racial_and_ethnic_minority_logit', 'svi_housing_type_and_transportation_logit')
 TERRAIN_FEATURE_NAMES = ('tree_canopy_cover', 'tree_canopy_height', 'elevation')
 REGION_FEATURE_NAMES = ('region_new_england', 'region_gulf', 'region_eastern_coast')
@@ -55,15 +51,6 @@ def normalize_canopy_cover(values) -> np.ndarray:
 
 def build_outage_terrain_features(static_data) -> np.ndarray:
     return np.column_stack([normalize_canopy_cover(static_data.tree_canopy_cover_2023), sanitize_feature(static_data.tree_height_mean, fill_value=0.0, clip_min=0.0), sanitize_feature(static_data.elevation, fill_value=0.0)]).astype(np.float32, copy=False)
-
-def load_region_fixed_effects(h3_index: np.ndarray, region_path: Path=REGION_FEATURES_PATH) -> np.ndarray:
-    region_df = pd.read_feather(region_path, columns=['index', *REGION_FEATURE_NAMES])
-    region_df['index'] = region_df['index'].astype(str)
-    aligned = region_df.set_index('index').reindex([str(idx) for idx in np.asarray(h3_index)])
-    if aligned.isna().any().any():
-        missing = int(aligned.isna().any(axis=1).sum())
-        raise ValueError(f'Missing region fixed effects for {missing} cells.')
-    return aligned.to_numpy(dtype=np.float32, copy=False)
 
 def inverse_softplus(values: np.ndarray) -> np.ndarray:
     values = np.asarray(values, dtype=np.float32)
