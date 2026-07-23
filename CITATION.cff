@@ -5,7 +5,7 @@ type: software
 authors:
   - family-names: 'Spaulding'
     given-names: 'Aaron'
-    orcid: 'https://orcid.org/my-orcid?orcid=0000-0001-6404-705X'
+    orcid: 'https://orcid.org/0000-0001-6404-705X'
   - family-names: 'Lin'
     given-names: 'Ning'
     orcid: 'https://orcid.org/0000-0002-5571-1606'
