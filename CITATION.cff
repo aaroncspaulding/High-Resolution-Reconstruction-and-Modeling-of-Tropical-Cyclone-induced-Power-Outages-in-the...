@@ -4,7 +4,6 @@ version: 1.0.0
 license: "MIT"
 type: software
 message: "If you use this software, please cite it as below."
-message: "If you use this software, please cite it as below."
 authors:
   - given-names: Aaron
     family-names: Spaulding
