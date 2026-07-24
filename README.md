@@ -1,4 +1,4 @@
-# Published Code
+# High-Resolution Simulation and Modeling of Tropical-Cyclone induced Power Outages in the United States
 [![DOI](https://zenodo.org/badge/1244694101.svg)](https://doi.org/10.5281/zenodo.21522705)
 
 ## Overview
